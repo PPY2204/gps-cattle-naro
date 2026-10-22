@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 from typing import Optional
+from zoneinfo import ZoneInfo
 from domain.enums import MountType, SubjectType
 from domain.models import SessionMetadata
 
@@ -20,8 +21,9 @@ class SessionManager:
         notes: str = "",
     ):
         now_dt = datetime.now(timezone.utc)
-        now_str = now_dt.strftime("%Y%m%d_%H%M%S_%f")
-        self.date_str = now_dt.strftime("%Y-%m-%d")
+        local_dt = now_dt.astimezone(ZoneInfo("Asia/Tokyo"))
+        now_str = local_dt.strftime("%Y%m%d_%H%M%S_%f")
+        self.date_str = local_dt.strftime("%Y-%m-%d")
         self.subject_dir = subject_type.value.lower()
         self.session_id = f"SESSION_{now_str}_{subject_id}"
         self.metadata = SessionMetadata(

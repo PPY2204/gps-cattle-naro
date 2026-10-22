@@ -2,9 +2,12 @@
 import argparse
 import os
 from pathlib import Path
+import re
 import signal
 import sys
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 from acquisition.reconnect import ResilientStreamReader
@@ -29,6 +32,20 @@ def get_profile(name: str) -> SubjectProfile:
         return SubjectProfile(
             subject_type=SubjectType(name.upper()),
         )
+
+
+def _session_recorded_at(filename: str) -> str | None:
+    """Return the fixed Japan-time start encoded in a session filename."""
+    match = re.search(r"SESSION_(\d{8})_(\d{6})_\d{6}", filename)
+    if not match:
+        return None
+    try:
+        started = datetime.strptime(
+            f"{match.group(1)}_{match.group(2)}", "%Y%m%d_%H%M%S"
+        ).replace(tzinfo=ZoneInfo("Asia/Tokyo"))
+    except ValueError:
+        return None
+    return started.strftime("%Y-%m-%d %H:%M:%S JST")
 
 
 import http.server
@@ -61,6 +78,10 @@ class LiveStatusHandler(http.server.BaseHTTPRequestHandler):
                 "recording": is_rec,
                 "recording_state": rec.recording_state if rec else "STOPPED",
                 "session_id": rec.session_mgr.session_id if rec else None,
+                "record_started_at": (
+                    rec.session_mgr.metadata.start_time.astimezone(ZoneInfo("Asia/Tokyo")).isoformat()
+                    if rec else None
+                ),
                 "subject_id": rec.session_mgr.metadata.subject_id if rec else "COW-NARO-001",
                 "profile": {
                     SubjectType.BOVINE: "cow",
@@ -212,7 +233,9 @@ class LiveStatusHandler(http.server.BaseHTTPRequestHandler):
                                 "ext": p.suffix.lstrip("."),
                                 "path": str(p.as_posix()),
                                 "size_kb": round(p.stat().st_size / 1024, 1),
-                                "modified": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(p.stat().st_mtime)),
+                                "recorded_at": _session_recorded_at(p.name) or time.strftime(
+                                    "%Y-%m-%d %H:%M:%S", time.localtime(p.stat().st_mtime)
+                                ),
                             })
             self.wfile.write(json.dumps(files_list, indent=2).encode("utf-8"))
             return
@@ -301,6 +324,7 @@ class LiveStatusHandler(http.server.BaseHTTPRequestHandler):
       </select>
     </div>
     <div class="row"><span>Session:</span><span id="session" class="val">--</span></div>
+    <div class="row"><span>Record started:</span><span id="record-started" class="val">--</span></div>
     <div class="row"><span>Rate:</span><span id="hz" class="val">0.0 Hz</span></div>
     <div style="margin-top: 12px;">
       <button id="btn-toggle-rec" onclick="toggleRecording()" style="width: 100%; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; background: #16a34a; color: white; font-size: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
@@ -549,6 +573,9 @@ class LiveStatusHandler(http.server.BaseHTTPRequestHandler):
         document.getElementById('subject').innerText = d.subject_id || '--';
         document.getElementById('profile-select').value = d.profile || 'human';
         document.getElementById('session').innerText = d.session_id || '--';
+        document.getElementById('record-started').innerText = d.record_started_at
+          ? new Date(d.record_started_at).toLocaleString()
+          : '--';
         document.getElementById('hz').innerText = (d.sampling_hz || 0).toFixed(1) + ' Hz';
         document.getElementById('sats').innerText = d.satellites;
         document.getElementById('hdop').innerText = d.hdop != null ? d.hdop.toFixed(2) : '--';
@@ -686,7 +713,7 @@ class LiveStatusHandler(http.server.BaseHTTPRequestHandler):
           <tr>
             <td>
               <div><span class="tag ${tagClass}">${tagLabel}</span><strong>${f.name}</strong></div>
-              <small style="color: #94a3b8;">${f.modified}</small>
+              <small style="color: #94a3b8;">Recorded: ${f.recorded_at}</small>
             </td>
             <td style="font-family: monospace; white-space: nowrap;">${f.size_kb} KB</td>
             <td style="text-align: right; white-space: nowrap;">
