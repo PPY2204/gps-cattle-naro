@@ -1,0 +1,19 @@
+[Unit]
+Description=NARO GNSS Autonomous IoT Logger and Web Dashboard
+After=bluetooth.target
+Wants=bluetooth.target
+
+[Service]
+Type=simple
+User=cow-pi
+WorkingDirectory=/home/cow-pi/naro-gps-nathan
+ExecStart=/home/cow-pi/naro-gps-nathan/.venv/bin/gps record --web
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+KillSignal=SIGINT
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
