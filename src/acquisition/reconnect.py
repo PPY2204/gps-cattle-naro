@@ -27,6 +27,7 @@ class ResilientStreamReader:
         rfcomm_channel: int = 1,
         max_retries: int = -1,  # -1 for infinite retries in field
         on_reconnect_callback: Callable[[], None] | None = None,
+        on_connection_callback: Callable[[], None] | None = None,
     ):
         self.port = port
         self.baud_rate = baud_rate
@@ -39,6 +40,7 @@ class ResilientStreamReader:
         self.rfcomm_channel = rfcomm_channel
         self.max_retries = max_retries
         self.on_reconnect = on_reconnect_callback
+        self.on_connection = on_connection_callback
         self._running = False
         self._reader: SerialReader | None = None
 
@@ -46,6 +48,7 @@ class ResilientStreamReader:
         """Continuously yield lines across reconnect cycles."""
         self._running = True
         attempt = 0
+        connected_once = False
 
         while self._running:
             try:
@@ -83,6 +86,17 @@ class ResilientStreamReader:
                     rate_hz=self.rate_hz,
                     configure_rate=self.configure_rate,
                 )
+                self._reader.open()
+                if self.on_connection and connected_once:
+                    try:
+                        self.on_connection()
+                    except Exception as callback_error:
+                        logger.error("Could not create a new session after reconnect: %s", callback_error)
+                        self._reader.close()
+                        raise DeviceConnectionError(
+                            f"Could not rotate recording session after reconnect: {callback_error}"
+                        ) from callback_error
+                connected_once = True
                 logger.info(f"Connecting to GNSS on {self.port}...")
                 for line in self._reader.read_lines():
                     if not self._running:
@@ -94,6 +108,7 @@ class ResilientStreamReader:
                 logger.warning(f"Connection lost ({e}). Attempt {attempt} to reconnect...")
                 if self._reader:
                     self._reader.close()
+                attempt = max(attempt, 1)
                 if self.on_reconnect:
                     try:
                         self.on_reconnect()

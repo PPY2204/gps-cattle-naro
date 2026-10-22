@@ -806,6 +806,10 @@ def cmd_record(args: argparse.Namespace) -> int:
 
     print("Press Ctrl+C to stop recording.")
 
+    def on_reconnected():
+        session_id = recorder.rotate_session()
+        print(f"Reconnected to GNSS; started new session {session_id}")
+
     reader = ResilientStreamReader(
         port=args.port,
         baud_rate=args.baud,
@@ -816,6 +820,7 @@ def cmd_record(args: argparse.Namespace) -> int:
         bluetooth_mac=args.bluetooth_mac,
         rfcomm_index=args.rfcomm_index,
         rfcomm_channel=args.rfcomm_channel,
+        on_connection_callback=on_reconnected,
     )
 
     # Print realtime line on terminal so user sees data streaming immediately

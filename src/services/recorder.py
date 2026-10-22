@@ -118,16 +118,30 @@ class RecorderService:
         with self._state_lock:
             if self._is_recording:
                 return self.session_mgr.session_id
-            self.close()
-            sub_id = subject_id or self.session_mgr.metadata.subject_id
-            self.session_mgr = SessionManager(
-                device_id=self.session_mgr.metadata.device_id,
-                subject_id=sub_id,
-                subject_type=self.profile.subject_type,
-                mount_type=self.session_mgr.metadata.mount_type,
-                sampling_rate_hz=self.session_mgr.metadata.sampling_rate_hz,
-            )
-            return self.start_recording()
+            return self._create_next_session(subject_id)
+
+    def rotate_session(self) -> str:
+        """Close the current session and immediately start a fresh one."""
+        with self._state_lock:
+            remaining = self.synchronizer.flush()
+            if remaining is not None:
+                self.handle_epoch(remaining)
+            self.stop_recording()
+            return self._create_next_session()
+
+    def _create_next_session(self, subject_id: Optional[str] = None) -> str:
+        self.close()
+        sub_id = subject_id or self.session_mgr.metadata.subject_id
+        self.synchronizer = EpochSynchronizer()
+        self.builder = MeasurementBuilder()
+        self.session_mgr = SessionManager(
+            device_id=self.session_mgr.metadata.device_id,
+            subject_id=sub_id,
+            subject_type=self.profile.subject_type,
+            mount_type=self.session_mgr.metadata.mount_type,
+            sampling_rate_hz=self.session_mgr.metadata.sampling_rate_hz,
+        )
+        return self.start_recording()
 
     def switch_profile(self, profile: SubjectProfile) -> str:
         """Persist a new profile in the next recording session."""

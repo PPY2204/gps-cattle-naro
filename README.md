@@ -101,6 +101,10 @@ the final buffered epoch, flushes the raw/CSV stores, and closes them.
 This is graceful shutdown only; sudden power removal can still lose data that
 has not reached the storage device.
 
+When the serial connection is lost and later reconnects, the recorder closes the
+previous raw/CSV files and starts a new session before accepting new NMEA lines.
+This keeps data collected before and after a power loss in separate sessions.
+
 The source layout is intentionally flat under `src/`: `cli/`, `acquisition/`,
 `device/`, `domain/`, `pipeline/`, `protocol/`, `services/`, and `storage/`
 are top-level packages. The old duplicate `human_gps/` directory was removed.
